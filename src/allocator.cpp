@@ -12,8 +12,8 @@ struct BlockHeader{
     BlockHeader *next;
     // The number of bytes used by the block data
     size_t dataSize;
-    // The number of bytes of block data that are pointers
-    size_t pointerDataSize;
+    // The number of pointers stored at the begining of the data
+    int numPointers;
 };
 
 // The start of the heap initialised at the begining
@@ -48,6 +48,12 @@ static inline bool canSplit(BlockHeader *block, size_t dataSize){
     return block->dataSize > dataSize + sizeof(BlockHeader);
 }
 
+// Combine a Block with the block next to it
+static void combineBlock(BlockHeader * block){
+    block->dataSize = block->dataSize + block->next->dataSize + sizeof(BlockHeader);
+    block->next = block->next->next;
+}
+
 // Block to start search on, initiliased in initHeap
 static BlockHeader *searchStart;
 
@@ -59,8 +65,9 @@ static inline BlockHeader *nextFit(size_t dataSize, int sweepID){
         return nullptr;
     }
     BlockHeader *currentBlock = searchStart;
+    
     while(currentBlock->dataSize < dataSize 
-        && !(currentBlock->sweepID == sweepID)){
+        && (currentBlock->sweepID != sweepID)){
             if (currentBlock->next == nullptr){
                 currentBlock = heapStart;
             }
@@ -68,6 +75,12 @@ static inline BlockHeader *nextFit(size_t dataSize, int sweepID){
             {
                 return nullptr;
             }
+            // If the next block is free and the current block is free combine them
+            if((currentBlock->next->sweepID != sweepID) && (currentBlock->sweepID != sweepID)){
+                combineBlock(currentBlock);
+                continue;
+            }
+            currentBlock = currentBlock->next;
     }
     searchStart = currentBlock;
     if (canSplit(currentBlock,dataSize)){
@@ -76,12 +89,12 @@ static inline BlockHeader *nextFit(size_t dataSize, int sweepID){
     return currentBlock;
 }
 
-BlockHeader *allocBlock(size_t dataSize, size_t pointerdataSize, 
+BlockHeader *allocBlock(size_t dataSize, int numPointers, 
     int sweepID){
     dataSize = align(dataSize);
     BlockHeader *block = nextFit(dataSize, sweepID);
     if (block){
-        block->pointerDataSize = pointerdataSize;
+        block->numPointers = numPointers;
         return block;
     }
     if (heapTop == maxHeapAddress){
@@ -90,7 +103,7 @@ BlockHeader *allocBlock(size_t dataSize, size_t pointerdataSize,
     BlockHeader *newBlock = heapTop;
     newBlock->sweepID = sweepID;
     newBlock->dataSize = dataSize;
-    newBlock->pointerDataSize = pointerdataSize;
+    newBlock->numPointers = numPointers;
     newBlock->next = newBlock + dataSize + sizeof(BlockHeader); 
     heapTop = newBlock->next;
     return newBlock;
